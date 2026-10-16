@@ -1,0 +1,43 @@
+{
+  "name": "@sandsoftwaresolutions/rate-limit",
+  "version": "0.1.0",
+  "description": "Rate limiting in memory: sliding window, memory cap, honest Retry-After, middleware for node:http and Express.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test",
+    "pack:check": "npm pack --dry-run"
+  },
+  "keywords": [
+    "rate-limit",
+    "throttle",
+    "express",
+    "middleware"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SandSoftwareSolutions/ss-rate-limit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/SandSoftwareSolutions/ss-rate-limit/issues"
+  },
+  "homepage": "https://github.com/SandSoftwareSolutions/ss-rate-limit#readme",
+  "publishConfig": {
+    "access": "public"
+  }
+}
