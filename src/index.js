@@ -1,7 +1,7 @@
 /**
  * A rate limiter in memory, for a single process (a small API, a Raspberry Pi). It uses a sliding window counter: the
  * previous window counts in proportion to how much of it still overlaps, which is accurate enough and needs two numbers
- * per key. Memory is capped (`maxKeys`): when it is full the oldest idle keys are dropped, never the busy ones.
+ * per key. Memory is capped (`maxKeys`): when it is full the key that was used longest ago is dropped.
  * For several servers use a shared store (Redis); this one does not talk to other processes.
  */
 export function createLimiter({ limit, windowMs, maxKeys = 10_000, now = Date.now } = {}) {
@@ -9,6 +9,7 @@ export function createLimiter({ limit, windowMs, maxKeys = 10_000, now = Date.no
   if (!Number.isFinite(windowMs) || windowMs < 1) throw new RangeError("createLimiter: windowMs must be a positive number");
   if (!Number.isInteger(maxKeys) || maxKeys < 1) throw new RangeError("createLimiter: maxKeys must be a whole number of at least 1");
   const keys = new Map(); // key -> { window, count, previous }
+  let lastTime = -Infinity; // the clock never runs backwards for us: a step back must not hand out a fresh quota
 
   function slide(entry, current) {
     if (entry.window === current) return;
@@ -17,10 +18,8 @@ export function createLimiter({ limit, windowMs, maxKeys = 10_000, now = Date.no
     entry.window = current;
   }
 
-  function evict(current) {
-    for (const [key, entry] of keys) {
-      if (entry.window < current - 1) keys.delete(key);
-    }
+  // The table is kept in order of last use, so the oldest entries (the first in the Map) are also the idle ones.
+  function evict() {
     while (keys.size >= maxKeys) keys.delete(keys.keys().next().value);
   }
 
@@ -39,11 +38,14 @@ export function createLimiter({ limit, windowMs, maxKeys = 10_000, now = Date.no
   return {
     /** Counts one request for `key` unless it is over the limit. */
     check(key, cost = 1) {
-      const time = now();
+      if (!Number.isFinite(cost) || cost < 0 || typeof cost !== "number") throw new RangeError("check: cost must be a finite number of at least 0");
+      const raw = now();
+      if (!Number.isFinite(raw)) throw new TypeError("createLimiter: now() must return a finite number");
+      const time = (lastTime = Math.max(lastTime, raw));
       const current = Math.floor(time / windowMs);
       let entry = keys.get(String(key));
       if (!entry) {
-        if (keys.size >= maxKeys) evict(current);
+        if (keys.size >= maxKeys) evict();
         entry = { window: current, count: 0, previous: 0 };
         keys.set(String(key), entry);
       } else {

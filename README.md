@@ -48,5 +48,6 @@ logins.reset(`login:${email}`);
 A *sliding window counter*: the previous window counts in proportion to how much of it still overlaps with the last `windowMs`. That avoids the burst of double the limit that a fixed window allows at a boundary, and needs only two numbers per key.
 
 - `retryAfter` is computed, not guessed: if you wait that long, the request fits.
-- `maxKeys` (default 10 000) caps memory. When it is full, keys that were not used recently are dropped first, so a flood of new keys cannot throw out a busy one.
+- `maxKeys` (default 10 000) caps memory. When it is full, the key that was used longest ago is dropped (constant work per request). A key that keeps being used stays, but an attacker who can invent more than `maxKeys` new keys between two requests of a victim can push the victim out; make the key something the client cannot choose freely (the address, not a header you do not trust; an IPv6 client can pick from a whole /64, so consider keying on the /64).
+- The clock never runs backwards for the limiter: if `now()` jumps back (a clock correction), the last time seen is used, so a correction does not give anyone a fresh quota. `now()` must return a finite number, `cost` a finite number of at least 0 (`0` only looks).
 - State is lost when the process restarts. For brute-force protection that is usually fine; for billing it is not.

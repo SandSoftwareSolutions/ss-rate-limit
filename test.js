@@ -96,3 +96,61 @@ test("retry-after is honest for many situations", () => {
     assert.equal(l.check("k").allowed, true, `limit ${limit}, window ${windowMs}`);
   }
 });
+
+// ---- review additions ----
+
+test("a clock that jumps back does not hand out a fresh quota", () => {
+  let t = 5000;
+  const l = createLimiter({ limit: 2, windowMs: 1000, now: () => t });
+  l.check("a"); l.check("a");
+  assert.equal(l.check("a").allowed, false);
+  t = 0; // an NTP step, a manual change
+  assert.equal(l.check("a").allowed, false);
+  t = 4999;
+  assert.equal(l.check("a").allowed, false);
+});
+
+test("a clock that returns nonsense is refused", () => {
+  const l = createLimiter({ limit: 2, windowMs: 1000, now: () => NaN });
+  assert.throws(() => l.check("a"), TypeError);
+});
+
+test("cost must be a finite number of at least 0", () => {
+  const l = createLimiter({ limit: 5, windowMs: 1000, now: () => 0 });
+  for (const cost of [-1, NaN, Infinity, "2", null]) assert.throws(() => l.check("a", cost), RangeError, String(cost));
+  assert.equal(l.check("a", 0).remaining, 5); // a peek costs nothing
+  assert.equal(l.check("a").remaining, 4);
+});
+
+test("a full table does not make every new key scan the whole table", () => {
+  const l = createLimiter({ limit: 5, windowMs: 60_000, maxKeys: 20_000, now: () => 1000 });
+  for (let i = 0; i < 20_000; i++) l.check(`fill${i}`);
+  const started = process.hrtime.bigint();
+  for (let i = 0; i < 20_000; i++) l.check(`new${i}`);
+  const ms = Number(process.hrtime.bigint() - started) / 1e6;
+  assert.ok(l.size <= 20_000);
+  assert.ok(ms < 1000, `20000 new keys on a full table took ${ms.toFixed(0)} ms`);
+});
+
+test("retry-after holds for random limits, costs and times (and does not make you wait much longer than needed)", () => {
+  let seed = 12345;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  for (let n = 0; n < 2000; n++) {
+    const limit = 1 + Math.floor(rnd() * 20);
+    const windowMs = 100 + Math.floor(rnd() * 5000);
+    let t = Math.floor(rnd() * 10 * windowMs);
+    const l = createLimiter({ limit, windowMs, now: () => t });
+    for (let i = 0, steps = Math.floor(rnd() * 40); i < steps; i++) {
+      t += Math.floor(rnd() * windowMs * 0.4);
+      l.check("k", 1 + Math.floor(rnd() * Math.min(limit, 4)));
+    }
+    const cost = 1 + Math.floor(rnd() * Math.min(limit, 4));
+    const r = l.check("k", cost);
+    if (r.allowed) continue;
+    const start = t;
+    t = start + r.retryAfterMs - Math.ceil(windowMs * 0.05) - 2; // clearly earlier: still refused
+    if (r.retryAfterMs > Math.ceil(windowMs * 0.05) + 2) assert.equal(l.check("k", cost).allowed, false, `too early, case ${n}`);
+    t = start + r.retryAfterMs;
+    assert.equal(l.check("k", cost).allowed, true, `retryAfterMs ${r.retryAfterMs} too short, case ${n}`);
+  }
+});
