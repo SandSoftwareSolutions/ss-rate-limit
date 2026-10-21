@@ -10,6 +10,8 @@ Rate limiting in memory, for one process: a small API, a Raspberry Pi, a login f
 npm install @sandsoftwaresolutions/rate-limit
 ```
 
+Works with `import` and `require()`, and ships TypeScript types for both.
+
 ## Middleware (`node:http`, Express)
 
 ```js
